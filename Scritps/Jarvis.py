@@ -1,66 +1,37 @@
-import subprocess
+import requests
+import datetime
 import speech_recognition as sr
 import pyttsx3
-import os
-import webbrowser
-import datetime
-import requests
-import platform
-import glob
 
-# Detectar sistema operativo
-SO = platform.system()
-
-# Configurar API del clima
-API_KEY = "cf2728055e15ce564e42025e26c00727"
-URL_BASE = "http://api.openweathermap.org/data/2.5/weather"
+# API de OpenWeatherMap
+API_KEY = "e4551bebb136eaa007fd7d195fcf0697"
+URL_CLIMA = "http://api.openweathermap.org/data/2.5/weather"
+URL_PRONOSTICO = "http://api.openweathermap.org/data/2.5/forecast"
 
 # Inicializar el motor de voz
 engine = pyttsx3.init()
-engine.setProperty('rate', 180)  # Velocidad
-engine.setProperty('voice', 'spanish')  # Ajustar idioma
+engine.setProperty('rate', 150)  # Velocidad de voz
+engine.setProperty('voice', 'spanish')  # Idioma en español
 
-# Comandos específicos para Windows
-comandos_sistema_windows = {
-    "configuración": "start ms-settings:",
-    "panel de control": "control",
-    "administrador de tareas": "taskmgr",
-    "bloc de notas": "notepad",
-    "explorador de archivos": "explorer",
-    "cmd": "cmd",
-    "powershell": "powershell",
-    "calculadora": "calc",
-    "msi center": r'"C:\Program Files (x86)\MSI\MSI Center\MSI.CentralServer.exe"',
-    "paint": "mspaint",
-    "wordpad": "write",
-    "registro de windows": "regedit",
-    "administrador de discos": "diskmgmt.msc",
-    "servicios": "services.msc"
+# Traducción de días de la semana y meses
+dias_semana = {
+    "Monday": "lunes", "Tuesday": "martes", "Wednesday": "miércoles",
+    "Thursday": "jueves", "Friday": "viernes", "Saturday": "sábado", "Sunday": "domingo"
 }
 
-# Comandos específicos para macOS
-comandos_sistema_mac = {
-    "configuración": "open -b com.apple.systempreferences",
-    "explorador de archivos": "open .",
-    "terminal": "open -a Terminal",
-    "safari": "open -a Safari",
-    "calculadora": "open -a Calculator",
-}
-
-# Comandos específicos para Linux
-comandos_sistema_linux = {
-    "configuración": "gnome-control-center",
-    "explorador de archivos": "xdg-open .",
-    "terminal": "gnome-terminal",
-    "firefox": "firefox",
-    "calculadora": "gnome-calculator",
+meses = {
+    "January": "enero", "February": "febrero", "March": "marzo", "April": "abril",
+    "May": "mayo", "June": "junio", "July": "julio", "August": "agosto",
+    "September": "septiembre", "October": "octubre", "November": "noviembre", "December": "diciembre"
 }
 
 def speak(text):
+    """Convierte texto en voz."""
     engine.say(text)
     engine.runAndWait()
 
 def listen():
+    """Escucha la voz del usuario y la convierte en texto."""
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
         print("Escuchando...")
@@ -72,91 +43,112 @@ def listen():
             print(f"Dijiste: {command}")
             return command.lower()
         except sr.UnknownValueError:
-            print("No pude entender el audio")
+            print("No pude entender el audio.")
             return None
         except sr.RequestError:
-            print("Error al conectar con el servicio de reconocimiento")
+            print("Error al conectar con el servicio de reconocimiento.")
             return None
 
-def obtener_clima(ciudad):
-    parametros = {"q": ciudad, "appid": API_KEY, "units": "metric", "lang": "es"}
-    respuesta = requests.get(URL_BASE, params=parametros)
+def obtener_clima(ciudad=None):
+    """Obtiene la temperatura actual de una ciudad."""
+    if not ciudad:
+        speak("¿De qué ciudad quieres conocer el clima?")
+        ciudad = listen()
+        if not ciudad:
+            speak("No pude entender la ciudad. Inténtalo de nuevo.")
+            return
+
+    parametros = {
+        "q": ciudad,
+        "appid": API_KEY,
+        "units": "metric",
+        "lang": "es"
+    }
+
+    respuesta = requests.get(URL_CLIMA, params=parametros)
 
     if respuesta.status_code == 200:
         datos = respuesta.json()
-        temperatura = datos["main"]["temp"]
+        temperatura = round(datos["main"]["temp"])  # Redondear temperatura
         descripcion = datos["weather"][0]["description"]
-        speak(f"El clima en {ciudad} es de {temperatura} grados y está {descripcion}.")
+        speak(f"La temperatura actual en {ciudad} es de {temperatura} grados y está {descripcion}.")
+        print(f"📍 {ciudad}: {temperatura}°C, {descripcion.capitalize()}")
     else:
-        speak(f"No pude obtener el clima de {ciudad}. Verifica el nombre.")
+        speak(f"No pude obtener el clima de {ciudad}. Verifica el nombre o intenta otra ciudad.")
 
-def abrir_aplicacion(nombre):
-    """
-    Abre una aplicación del sistema o una aplicación instalada.
-    """
-    try:
-        # Detectar sistema operativo y ejecutar el comando correcto
-        if SO == "Windows" and nombre in comandos_sistema_windows:
-            comando = comandos_sistema_windows[nombre]
-        elif SO == "Darwin" and nombre in comandos_sistema_mac:
-            comando = comandos_sistema_mac[nombre]
-        elif SO == "Linux" and nombre in comandos_sistema_linux:
-            comando = comandos_sistema_linux[nombre]
-        else:
-            comando = None
-
-        if comando:
-            print(f"🔍 Ejecutando: {comando}")
-            speak(f"Abriendo {nombre}")
-            subprocess.Popen(comando, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def obtener_pronostico(ciudad=None):
+    """Obtiene el pronóstico del clima para los próximos 5 días en castellano."""
+    if not ciudad:
+        speak("¿Para qué ciudad quieres el pronóstico?")
+        ciudad = listen()
+        if not ciudad:
+            speak("No pude entender la ciudad. Inténtalo de nuevo.")
             return
 
-        # Si no es un comando del sistema, buscar la aplicación instalada
-        ruta = encontrar_ejecutable(nombre)
-        if ruta:
-            print(f"🔍 Encontrado: {ruta}")
-            speak(f"Abriendo {nombre}")
-            if SO == "Windows":
-                try:
-                    os.startfile(ruta)
-                except Exception:
-                    subprocess.Popen(f'"{ruta}"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    parametros = {
+        "q": ciudad,
+        "appid": API_KEY,
+        "units": "metric",
+        "lang": "es",
+        "cnt": 40  # Obtener pronóstico de 5 días (cada 3 horas)
+    }
+
+    respuesta = requests.get(URL_PRONOSTICO, params=parametros)
+
+    if respuesta.status_code == 200:
+        datos = respuesta.json()
+        pronostico_por_dia = {}
+
+        for entrada in datos["list"]:
+            fecha_texto = entrada["dt_txt"].split(" ")[0]
+            temp_max = round(entrada["main"]["temp_max"])  # Redondear temperaturas
+            temp_min = round(entrada["main"]["temp_min"])
+            descripcion = entrada["weather"][0]["description"]
+
+            if fecha_texto not in pronostico_por_dia:
+                pronostico_por_dia[fecha_texto] = {
+                    "temp_max": temp_max,
+                    "temp_min": temp_min,
+                    "descripcion": descripcion
+                }
             else:
-                subprocess.Popen([ruta], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            speak(f"No encontré {nombre} en tu sistema.")
-            print(f"❌ No se encontró la aplicación: {nombre}")
-    except Exception as e:
-        speak(f"No pude abrir {nombre}. Error: {e}")
-        print(f"❌ Error al abrir {nombre}: {e}")
+                pronostico_por_dia[fecha_texto]["temp_max"] = max(pronostico_por_dia[fecha_texto]["temp_max"], temp_max)
+                pronostico_por_dia[fecha_texto]["temp_min"] = min(pronostico_por_dia[fecha_texto]["temp_min"], temp_min)
 
-def encontrar_ejecutable(nombre):
-    """
-    Busca la ruta del ejecutable en todas las unidades disponibles.
-    """
-    if SO == "Windows":
-        # Comando WHERE en Windows
-        resultado = subprocess.run(["where", nombre], capture_output=True, text=True)
+        speak(f"Este es el pronóstico para {ciudad} en los próximos días:")
+        print(f"📍 Pronóstico para {ciudad}:")
+
+        for fecha, info in pronostico_por_dia.items():
+            fecha_objeto = datetime.datetime.strptime(fecha, "%Y-%m-%d")
+            dia_semana = dias_semana[fecha_objeto.strftime("%A")]
+            mes = meses[fecha_objeto.strftime("%B")]
+            dia_num = fecha_objeto.strftime("%d")
+
+            mensaje = f"El {dia_semana} {dia_num} de {mes} hará una máxima de {info['temp_max']} grados y una mínima de {info['temp_min']} grados, con {info['descripcion']}."
+            speak(mensaje)
+            print(mensaje)
     else:
-        # Comando WHICH en macOS/Linux
-        resultado = subprocess.run(["which", nombre], capture_output=True, text=True)
-
-    ruta = resultado.stdout.strip()
-    if ruta:
-        return ruta.split("\n")[0]  # Tomar la primera ruta si hay varias
-
-    return None
+        speak(f"No pude obtener el pronóstico para {ciudad}. Verifica el nombre o intenta otra ciudad.")
 
 def execute_command(command):
+    """Ejecuta el comando del usuario."""
     if "hora" in command:
         hora = datetime.datetime.now().strftime("%H:%M")
         speak(f"La hora actual es {hora}")
-    elif "abrir" in command:
-        nombre_app = command.replace("abrir", "").strip()
-        abrir_aplicacion(nombre_app)
-    elif "tiempo en" in command:
-        ciudad = command.replace("tiempo en", "").strip()
-        obtener_clima(ciudad)
+    elif "tiempo" in command or "clima" in command:
+        if "hoy" in command or "actual" in command:
+            ciudad = command.replace("tiempo en", "").replace("clima en", "").strip()
+            obtener_clima(ciudad)
+        elif "pronóstico" in command or "próximos días" in command:
+            ciudad = command.replace("pronóstico en", "").replace("próximos días en", "").strip()
+            obtener_pronostico(ciudad)
+        else:
+            speak("¿Quieres la temperatura actual o el pronóstico?")
+            respuesta = listen()
+            if respuesta and "pronóstico" in respuesta:
+                obtener_pronostico()
+            else:
+                obtener_clima()
     elif "salir" in command or "apagar" in command:
         speak("Apagando el asistente. Hasta luego.")
         exit()
