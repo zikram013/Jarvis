@@ -35,13 +35,23 @@ el tiempo actual o el pronóstico de los próximos cinco días.
 - `Abre la calculadora`
 - `Abrir bloc de notas`
 - `Abre el explorador de archivos`
+- `Ejecuta Steam`
+- `Quiero que abras Visual Studio Code`
+- `¿Puedes iniciar Spotify, por favor?`
 - `Tiempo en Madrid`
 - `¿Qué temperatura hace en Cercedilla?`
 - `Pronóstico en Barcelona`
 - `¿Qué hora es?`
 - `Salir`
 
-Las aplicaciones conocidas se definen por sistema operativo en
-`Scritps/Jarvis.py`. Jarvis también intenta encontrar otros ejecutables que estén
-disponibles en `PATH`.
+Jarvis entiende distintas formas cotidianas de pedir la apertura de una
+aplicación: `abre`, `ejecuta`, `inicia`, `lanza` y `arranca`, incluidas varias de
+sus conjugaciones.
+
+Para encontrar una aplicación, primero consulta las aplicaciones del sistema y
+el `PATH`. En Windows también revisa el menú Inicio, las aplicaciones de
+Microsoft Store y el Registro. Si aún no la encuentra, realiza una búsqueda por
+nombre en las unidades locales; esta última búsqueda puede tardar la primera
+vez. Los resultados encontrados se conservan en memoria mientras Jarvis siga
+abierto.
  

@@ -1,16 +1,15 @@
 import datetime
 import os
-import platform
-import shutil
-import subprocess
+import re
 
 import pyttsx3
 import requests
 import speech_recognition as sr
 
+from application_finder import find_application, launch_application
+
 
 # Configuración general
-SO = platform.system()
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "").strip()
 URL_CLIMA = "https://api.openweathermap.org/data/2.5/weather"
 URL_PRONOSTICO = "https://api.openweathermap.org/data/2.5/forecast"
@@ -20,44 +19,48 @@ engine = pyttsx3.init()
 engine.setProperty("rate", 150)
 engine.setProperty("voice", "spanish")
 
-# Comandos específicos para Windows
-COMANDOS_SISTEMA_WINDOWS = {
-    "configuración": "start ms-settings:",
-    "configuracion": "start ms-settings:",
-    "panel de control": "control",
-    "administrador de tareas": "taskmgr",
-    "bloc de notas": "notepad",
-    "explorador de archivos": "explorer",
-    "cmd": "cmd",
-    "powershell": "powershell",
-    "calculadora": "calc",
-    "msi center": r'"C:\Program Files (x86)\MSI\MSI Center\MSI.CentralServer.exe"',
-    "paint": "mspaint",
-    "wordpad": "write",
-    "registro de windows": "regedit",
-    "administrador de discos": "diskmgmt.msc",
-    "servicios": "services.msc",
-}
-
-# Comandos específicos para macOS
-COMANDOS_SISTEMA_MAC = {
-    "configuración": ["open", "-b", "com.apple.systempreferences"],
-    "configuracion": ["open", "-b", "com.apple.systempreferences"],
-    "explorador de archivos": ["open", "."],
-    "terminal": ["open", "-a", "Terminal"],
-    "safari": ["open", "-a", "Safari"],
-    "calculadora": ["open", "-a", "Calculator"],
-}
-
-# Comandos específicos para Linux
-COMANDOS_SISTEMA_LINUX = {
-    "configuración": ["gnome-control-center"],
-    "configuracion": ["gnome-control-center"],
-    "explorador de archivos": ["xdg-open", "."],
-    "terminal": ["gnome-terminal"],
-    "firefox": ["firefox"],
-    "calculadora": ["gnome-calculator"],
-}
+VERBOS_APERTURA = (
+    "abre",
+    "ábreme",
+    "abreme",
+    "abrir",
+    "abrirme",
+    "abra",
+    "abres",
+    "abras",
+    "ejecuta",
+    "ejecútame",
+    "ejecutame",
+    "ejecutar",
+    "ejecutas",
+    "ejecute",
+    "ejecutes",
+    "inicia",
+    "iníciame",
+    "iniciame",
+    "iniciar",
+    "inicias",
+    "inicie",
+    "inicies",
+    "lanza",
+    "lánzame",
+    "lanzame",
+    "lanzar",
+    "lanzas",
+    "lance",
+    "lances",
+    "arranca",
+    "arráncame",
+    "arrancame",
+    "arrancar",
+    "arrancas",
+    "arranque",
+    "arranques",
+)
+PATRON_APERTURA = re.compile(
+    rf"\b(?:{'|'.join(VERBOS_APERTURA)})\b(?P<nombre>.*)$",
+    re.IGNORECASE,
+)
 
 DIAS_SEMANA = {
     "Monday": "lunes",
@@ -239,38 +242,70 @@ def obtener_pronostico(ciudad=None):
         print(mensaje)
 
 
-def comando_sistema(nombre):
-    """Devuelve el comando conocido para el sistema operativo actual."""
-    if SO == "Windows":
-        return COMANDOS_SISTEMA_WINDOWS.get(nombre)
-    if SO == "Darwin":
-        return COMANDOS_SISTEMA_MAC.get(nombre)
-    if SO == "Linux":
-        return COMANDOS_SISTEMA_LINUX.get(nombre)
-    return None
-
-
-def encontrar_ejecutable(nombre):
-    """Busca una aplicación instalada y disponible en PATH."""
-    candidatos = (nombre, nombre.replace(" ", ""), nombre.replace(" ", "-"))
-    for candidato in candidatos:
-        ruta = shutil.which(candidato)
-        if ruta:
-            return ruta
-    return None
-
-
 def normalizar_nombre_aplicacion(nombre):
-    """Elimina artículos habituales de una orden como 'abre la calculadora'."""
-    nombre = nombre.strip()
-    for articulo in ("el ", "la ", "los ", "las "):
-        if nombre.startswith(articulo):
-            return nombre[len(articulo):].strip()
-    return nombre
+    """Elimina palabras conversacionales que no forman parte del nombre."""
+    nombre = nombre.strip(" ,:¿?¡!.")
+    prefijos = (
+        "por favor, ",
+        "por favor ",
+        "ahora, ",
+        "ahora ",
+        "ya, ",
+        "ya ",
+        "la aplicación de ",
+        "la aplicacion de ",
+        "el programa de ",
+        "la aplicación ",
+        "la aplicacion ",
+        "el programa ",
+        "la app ",
+        "aplicación ",
+        "aplicacion ",
+        "programa ",
+        "app ",
+        "el ",
+        "la ",
+        "los ",
+        "las ",
+        "un ",
+        "una ",
+    )
+    sufijos = (
+        " por favor",
+        " si puedes",
+        " cuando puedas",
+        " para mí",
+        " para mi",
+        " ahora",
+        " ya",
+    )
+
+    cambiado = True
+    while cambiado:
+        cambiado = False
+        for prefijo in prefijos:
+            if nombre.startswith(prefijo):
+                nombre = nombre[len(prefijo):].strip()
+                cambiado = True
+                break
+
+    for sufijo in sufijos:
+        if nombre.endswith(sufijo):
+            nombre = nombre[: -len(sufijo)].strip()
+            break
+    return nombre.strip(" ,:¿?¡!.")
+
+
+def extraer_nombre_aplicacion(command):
+    """Extrae una aplicación de órdenes expresadas en lenguaje cotidiano."""
+    coincidencia = PATRON_APERTURA.search(command)
+    if coincidencia is None:
+        return None
+    return normalizar_nombre_aplicacion(coincidencia.group("nombre"))
 
 
 def abrir_aplicacion(nombre):
-    """Abre una aplicación conocida o un ejecutable instalado."""
+    """Localiza y abre una aplicación conocida o instalada."""
     if not nombre:
         speak("¿Qué aplicación quieres abrir?")
         nombre = listen()
@@ -280,44 +315,24 @@ def abrir_aplicacion(nombre):
     nombre = normalizar_nombre_aplicacion(nombre)
 
     try:
-        comando = comando_sistema(nombre)
-        if comando:
-            print(f" Ejecutando: {comando}")
-            speak(f"Abriendo {nombre}")
-            if SO == "Windows":
-                subprocess.Popen(
-                    comando,
-                    shell=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            else:
-                subprocess.Popen(
-                    comando,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            return
+        def avisar_busqueda_profunda():
+            mensaje = f"Estoy buscando {nombre} en las unidades del equipo."
+            print(f" {mensaje}")
+            speak(mensaje)
 
-        ruta = encontrar_ejecutable(nombre)
-        if ruta:
-            print(f" Encontrado: {ruta}")
-            speak(f"Abriendo {nombre}")
-            if SO == "Windows":
-                os.startfile(ruta)
-            else:
-                subprocess.Popen(
-                    [ruta],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            return
+        target = find_application(nombre, on_deep_search=avisar_busqueda_profunda)
+        if target:
+            print(f" Aplicación encontrada: {target.name} ({target.value})")
+            speak(f"Abriendo {target.name}")
+            launch_application(target)
+            return True
 
         speak(f"No encontré {nombre} en tu sistema.")
         print(f" No se encontró la aplicación: {nombre}")
-    except (OSError, subprocess.SubprocessError) as error:
+    except (OSError, RuntimeError) as error:
         speak(f"No pude abrir {nombre}.")
         print(f" Error al abrir {nombre}: {error}")
+    return False
 
 
 def extraer_ciudad(command):
@@ -349,14 +364,13 @@ def resolver_consulta_tiempo(command):
 
 def execute_command(command):
     """Ejecuta el comando de voz del usuario."""
-    if "hora" in command:
+    nombre_app = extraer_nombre_aplicacion(command)
+
+    if re.search(r"\bhora\b", command):
         hora = datetime.datetime.now().strftime("%H:%M")
         speak(f"La hora actual es {hora}")
-    elif command.startswith("abrir ") or command.startswith("abre "):
-        nombre_app = command.split(maxsplit=1)[1].strip()
+    elif nombre_app is not None:
         abrir_aplicacion(nombre_app)
-    elif command in ("abrir", "abre"):
-        abrir_aplicacion("")
     elif "pronóstico" in command or "pronostico" in command or "próximos días" in command:
         obtener_pronostico(extraer_ciudad(command))
     elif "tiempo" in command or "clima" in command or "temperatura" in command:

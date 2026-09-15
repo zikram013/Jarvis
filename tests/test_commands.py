@@ -31,7 +31,8 @@ def cargar_jarvis():
     modulo = importlib.util.module_from_spec(spec)
 
     with patch.dict(sys.modules, modules):
-        spec.loader.exec_module(modulo)
+        with patch.object(sys, "path", [str(ruta.parent)] + sys.path):
+            spec.loader.exec_module(modulo)
     return modulo
 
 
@@ -44,6 +45,44 @@ class ExecuteCommandTest(unittest.TestCase):
             jarvis.execute_command("abre calculadora")
 
         abrir.assert_called_once_with("calculadora")
+
+    def test_entiende_ejecuta_con_articulo(self):
+        with patch.object(jarvis, "abrir_aplicacion") as abrir:
+            jarvis.execute_command("ejecuta el steam")
+
+        abrir.assert_called_once_with("steam")
+
+    def test_entiende_una_peticion_conversacional(self):
+        with patch.object(jarvis, "abrir_aplicacion") as abrir:
+            jarvis.execute_command(
+                "quiero que abras la aplicación visual studio code por favor"
+            )
+
+        abrir.assert_called_once_with("visual studio code")
+
+    def test_entiende_iniciar_como_sinonimo(self):
+        with patch.object(jarvis, "abrir_aplicacion") as abrir:
+            jarvis.execute_command("puedes iniciar spotify")
+
+        abrir.assert_called_once_with("spotify")
+
+    def test_entiende_una_pregunta_cotidiana(self):
+        with patch.object(jarvis, "abrir_aplicacion") as abrir:
+            jarvis.execute_command("me abres steam por favor")
+
+        abrir.assert_called_once_with("steam")
+
+    def test_pregunta_si_no_se_indica_aplicacion(self):
+        with patch.object(jarvis, "abrir_aplicacion") as abrir:
+            jarvis.execute_command("¿puedes abrir?")
+
+        abrir.assert_called_once_with("")
+
+    def test_ahora_no_se_confunde_con_hora(self):
+        with patch.object(jarvis, "abrir_aplicacion") as abrir:
+            jarvis.execute_command("abre ahora steam")
+
+        abrir.assert_called_once_with("steam")
 
     def test_normaliza_el_articulo_de_la_aplicacion(self):
         self.assertEqual(
