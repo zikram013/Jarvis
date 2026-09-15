@@ -106,7 +106,9 @@ class LocalKnowledgeAssistantTest(unittest.TestCase):
         )
 
     def test_busca_en_la_web_para_informacion_actual(self):
-        post = Mock(return_value=FakeResponse("El partido es el domingo [1]."))
+        post = Mock(
+            return_value=FakeResponse("El partido es el domingo [1, 2,4].")
+        )
         assistant = assistant_module.LocalKnowledgeAssistant(
             http_post=post,
             search_factory=FakeSearch,
@@ -115,6 +117,7 @@ class LocalKnowledgeAssistantTest(unittest.TestCase):
         answer = assistant.ask("¿Cuál es el próximo partido del Atlético?")
 
         self.assertTrue(answer.used_web)
+        self.assertEqual(answer.text, "El partido es el domingo.")
         self.assertEqual(len(answer.sources), 1)
         self.assertEqual(answer.sources[0].url, "https://example.com/calendario")
         sent_messages = post.call_args.kwargs["json"]["messages"]
@@ -172,12 +175,20 @@ class LocalKnowledgeAssistantTest(unittest.TestCase):
     def test_limpia_citas_y_razonamiento_para_la_voz(self):
         text = (
             "<think>razonamiento interno</think> "
-            "El partido es el domingo [1]. https://example.com"
+            "El partido es el domingo [1,2, 4]. https://example.com"
         )
 
         self.assertEqual(
             assistant_module.text_for_speech(text),
             "El partido es el domingo.",
+        )
+
+    def test_limpia_citas_separadas_sin_eliminar_otros_corchetes(self):
+        text = "Ganó el partido [1][2] y usó una formación [4-4-2]."
+
+        self.assertEqual(
+            assistant_module.remove_source_citations(text),
+            "Ganó el partido y usó una formación [4-4-2].",
         )
 
 

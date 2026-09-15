@@ -97,11 +97,20 @@ def _remove_thinking(text):
     ).strip()
 
 
+def remove_source_citations(text):
+    """Elimina referencias numéricas de fuentes sin alterar otros corchetes."""
+    return re.sub(
+        r"\s*\[(?:\d+\s*(?:,\s*\d+\s*)*)]",
+        "",
+        text,
+    ).strip()
+
+
 def text_for_speech(text):
     """Retira citas, URLs y formato para que no sean leídos en voz alta."""
     text = _remove_thinking(text)
     text = re.sub(r"\[([^]]+)]\(https?://[^)]+\)", r"\1", text)
-    text = re.sub(r"\s*\[\d+]", "", text)
+    text = remove_source_citations(text)
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"[*_`#>]", "", text)
     return " ".join(text.split()).strip()
@@ -238,7 +247,9 @@ class LocalKnowledgeAssistant:
         except ValueError as error:
             raise LocalAssistantError("Ollama devolvió una respuesta no válida.") from error
 
-        answer = _remove_thinking(data.get("message", {}).get("content", ""))
+        answer = remove_source_citations(
+            _remove_thinking(data.get("message", {}).get("content", ""))
+        )
         if not answer:
             detail = data.get("error", "El modelo no devolvió ninguna respuesta.")
             raise OllamaUnavailable(
