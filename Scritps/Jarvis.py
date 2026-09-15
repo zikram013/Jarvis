@@ -119,7 +119,7 @@ def comprobar_api_clima():
         "No está configurada la clave de OpenWeatherMap. "
         "Define la variable OPENWEATHER_API_KEY antes de iniciar Jarvis."
     )
-    print(f"❌ {mensaje}")
+    print(f" {mensaje}")
     speak(mensaje)
     return False
 
@@ -152,7 +152,7 @@ def obtener_clima(ciudad=None):
     try:
         respuesta = requests.get(URL_CLIMA, params=parametros, timeout=10)
     except requests.RequestException as error:
-        print(f"❌ Error al consultar el clima: {error}")
+        print(f" Error al consultar el clima: {error}")
         speak("No pude conectar con el servicio del clima.")
         return
 
@@ -165,7 +165,7 @@ def obtener_clima(ciudad=None):
             f"y está {descripcion}."
         )
         speak(mensaje)
-        print(f"📍 {ciudad}: {temperatura}°C, {descripcion.capitalize()}")
+        print(f" {ciudad}: {temperatura}°C, {descripcion.capitalize()}")
     else:
         speak(
             f"No pude obtener el clima de {ciudad}. "
@@ -193,7 +193,7 @@ def obtener_pronostico(ciudad=None):
     try:
         respuesta = requests.get(URL_PRONOSTICO, params=parametros, timeout=10)
     except requests.RequestException as error:
-        print(f"❌ Error al consultar el pronóstico: {error}")
+        print(f" Error al consultar el pronóstico: {error}")
         speak("No pude conectar con el servicio del clima.")
         return
 
@@ -223,7 +223,7 @@ def obtener_pronostico(ciudad=None):
             pronostico["temp_min"] = min(pronostico["temp_min"], temp_min)
 
     speak(f"Este es el pronóstico para {ciudad} en los próximos días:")
-    print(f"📍 Pronóstico para {ciudad}:")
+    print(f" Pronóstico para {ciudad}:")
 
     for fecha, info in pronostico_por_dia.items():
         fecha_objeto = datetime.datetime.strptime(fecha, "%Y-%m-%d")
@@ -282,7 +282,7 @@ def abrir_aplicacion(nombre):
     try:
         comando = comando_sistema(nombre)
         if comando:
-            print(f"🔍 Ejecutando: {comando}")
+            print(f" Ejecutando: {comando}")
             speak(f"Abriendo {nombre}")
             if SO == "Windows":
                 subprocess.Popen(
@@ -301,7 +301,7 @@ def abrir_aplicacion(nombre):
 
         ruta = encontrar_ejecutable(nombre)
         if ruta:
-            print(f"🔍 Encontrado: {ruta}")
+            print(f" Encontrado: {ruta}")
             speak(f"Abriendo {nombre}")
             if SO == "Windows":
                 os.startfile(ruta)
@@ -314,10 +314,10 @@ def abrir_aplicacion(nombre):
             return
 
         speak(f"No encontré {nombre} en tu sistema.")
-        print(f"❌ No se encontró la aplicación: {nombre}")
+        print(f" No se encontró la aplicación: {nombre}")
     except (OSError, subprocess.SubprocessError) as error:
         speak(f"No pude abrir {nombre}.")
-        print(f"❌ Error al abrir {nombre}: {error}")
+        print(f" Error al abrir {nombre}: {error}")
 
 
 def extraer_ciudad(command):
