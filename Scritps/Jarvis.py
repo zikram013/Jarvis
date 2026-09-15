@@ -7,6 +7,12 @@ import requests
 import speech_recognition as sr
 
 from application_finder import find_application, launch_application
+from local_assistant import (
+    LocalAssistantError,
+    LocalKnowledgeAssistant,
+    OllamaUnavailable,
+    text_for_speech,
+)
 
 
 # Configuración general
@@ -18,6 +24,7 @@ URL_PRONOSTICO = "https://api.openweathermap.org/data/2.5/forecast"
 engine = pyttsx3.init()
 engine.setProperty("rate", 150)
 engine.setProperty("voice", "spanish")
+knowledge_assistant = LocalKnowledgeAssistant()
 
 VERBOS_APERTURA = (
     "abre",
@@ -301,6 +308,29 @@ def extraer_nombre_aplicacion(command):
     coincidencia = PATRON_APERTURA.search(command)
     if coincidencia is None:
         return None
+
+    prefix = command[: coincidencia.start()].strip(" ,:¿?¡!.")
+    explanatory_prefixes = ("cómo ", "como ", "por qué ", "por que ")
+    if prefix.startswith(explanatory_prefixes):
+        return None
+
+    request_clues = (
+        "jarvis",
+        "oye",
+        "por favor",
+        "quiero",
+        "puedes",
+        "podrías",
+        "podrias",
+        "necesito",
+        "debes",
+        "tienes que",
+    )
+    prefix_words = set(prefix.split())
+    if prefix and not (
+        any(clue in prefix for clue in request_clues) or "me" in prefix_words
+    ):
+        return None
     return normalizar_nombre_aplicacion(coincidencia.group("nombre"))
 
 
@@ -362,24 +392,101 @@ def resolver_consulta_tiempo(command):
         obtener_clima()
 
 
+def es_consulta_hora_actual(command):
+    """Distingue la hora actual de preguntas como 'a qué hora juega'."""
+    patterns = (
+        r"^\s*hora\s*[?.!]*$",
+        r"\b(?:que|qué) hora es\b",
+        r"\bdime (?:la )?hora\b",
+        r"\bhora actual\b",
+    )
+    return any(re.search(pattern, command) for pattern in patterns)
+
+
+def es_consulta_meteorologica(command):
+    """Evita confundir el tiempo meteorológico con la duración de un trayecto."""
+    travel_words = (
+        r"\b(?:tarda|tardar|trayecto|viaje|llegar|distancia|ruta|camino|"
+        r"coche|andando|a pie|tren|metro|autobús|autobus)\b"
+    )
+    if re.search(travel_words, command):
+        return False
+    if re.search(r"\b(?:clima|temperatura|grados)\b", command):
+        return True
+    weather_patterns = (
+        r"^\s*(?:dime (?:el )?)?tiempo\s*[?.!]*$",
+        r"\btiempo\s+(?:en|para)\b",
+        r"\b(?:que|qué|como|cómo)\s+(?:esta|está|hace|hara|hará)\s+(?:el )?tiempo\b",
+        r"\b(?:que|qué) tiempo\s+(?:hace|hara|hará)\b",
+    )
+    return any(re.search(pattern, command) for pattern in weather_patterns)
+
+
+def es_consulta_pronostico_meteorologico(command):
+    """Distingue el pronóstico del tiempo de predicciones deportivas u otras."""
+    patterns = (
+        r"\bpron[oó]stico\s+(?:del tiempo|meteorol[oó]gico)\b",
+        r"\bpron[oó]stico\s+en\b",
+        r"\b(?:tiempo|clima)\b.*\bpr[oó]ximos d[ií]as\b",
+        r"\bpr[oó]ximos d[ií]as\s+en\b",
+    )
+    return any(re.search(pattern, command) for pattern in patterns)
+
+
+def es_comando_salida(command):
+    """Distingue cerrar Jarvis de preguntas que contienen 'salir' o 'apagar'."""
+    normalized = command.strip(" ,:¿?¡!.")
+    patterns = (
+        r"^(?:jarvis[ ,]+)?(?:sal|salir|apagar|ap[aá]gate)$",
+        r"^(?:cierra|apaga|termina) (?:jarvis|el asistente|el programa)$",
+        r"^quiero salir (?:de jarvis|del asistente|del programa)$",
+    )
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def responder_pregunta(question):
+    """Consulta Ollama y, cuando hace falta, resultados web gratuitos."""
+    print(" Consultando el asistente local...")
+    try:
+        answer = knowledge_assistant.ask(question)
+    except OllamaUnavailable as error:
+        message = str(error)
+        print(f" {message}")
+        speak(message)
+        return None
+    except LocalAssistantError as error:
+        print(f" Error al consultar el asistente: {error}")
+        speak("No pude consultar la información en este momento.")
+        return None
+
+    print(f"Jarvis: {answer.text}")
+    if answer.sources:
+        print("Resultados web consultados:")
+        for source in answer.sources:
+            print(f"- {source.title}: {source.url}")
+
+    speak(text_for_speech(answer.text))
+    return answer
+
+
 def execute_command(command):
     """Ejecuta el comando de voz del usuario."""
     nombre_app = extraer_nombre_aplicacion(command)
 
-    if re.search(r"\bhora\b", command):
+    if es_consulta_hora_actual(command):
         hora = datetime.datetime.now().strftime("%H:%M")
         speak(f"La hora actual es {hora}")
     elif nombre_app is not None:
         abrir_aplicacion(nombre_app)
-    elif "pronóstico" in command or "pronostico" in command or "próximos días" in command:
+    elif es_consulta_pronostico_meteorologico(command):
         obtener_pronostico(extraer_ciudad(command))
-    elif "tiempo" in command or "clima" in command or "temperatura" in command:
+    elif es_consulta_meteorologica(command):
         resolver_consulta_tiempo(command)
-    elif "salir" in command or "apagar" in command:
+    elif es_comando_salida(command):
         speak("Apagando el asistente. Hasta luego.")
         raise SystemExit
     else:
-        speak("No reconozco ese comando.")
+        responder_pregunta(command)
 
 
 def main():

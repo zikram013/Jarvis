@@ -10,6 +10,8 @@ def cargar_jarvis():
     """Carga Jarvis sin requerir audio ni dependencias externas."""
     requests = types.ModuleType("requests")
     requests.RequestException = RuntimeError
+    requests.ConnectionError = RuntimeError
+    requests.post = Mock()
 
     speech_recognition = types.ModuleType("speech_recognition")
     speech_recognition.Recognizer = Mock
@@ -117,6 +119,57 @@ class ExecuteCommandTest(unittest.TestCase):
                     jarvis.execute_command("dime el tiempo")
 
         obtener_pronostico.assert_called_once_with()
+
+    def test_pregunta_deportiva_se_envia_al_asistente_local(self):
+        question = "cuál es el próximo partido del atlético de madrid"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
+
+    def test_duracion_de_trayecto_no_se_confunde_con_el_clima(self):
+        question = "cuánto tiempo se tarda de madrid a toledo en coche"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
+
+    def test_hora_de_un_partido_no_se_confunde_con_la_hora_actual(self):
+        question = "a qué hora juega el atlético de madrid"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
+
+    def test_pregunta_historica_se_envia_al_asistente_local(self):
+        question = "quién fue el primer emperador romano"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
+
+    def test_como_abrir_algo_no_intenta_lanzar_una_aplicacion(self):
+        question = "cómo abrir una cuenta bancaria"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            with patch.object(jarvis, "abrir_aplicacion") as abrir:
+                jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
+        abrir.assert_not_called()
+
+    def test_pronostico_deportivo_no_se_confunde_con_el_clima(self):
+        question = "cuál es tu pronóstico para el próximo partido"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
+
+    def test_pregunta_sobre_apagar_algo_no_cierra_jarvis(self):
+        question = "cómo apagar un incendio pequeño"
+        with patch.object(jarvis, "responder_pregunta") as responder:
+            jarvis.execute_command(question)
+
+        responder.assert_called_once_with(question)
 
 
 if __name__ == "__main__":

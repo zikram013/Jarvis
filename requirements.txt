@@ -2,3 +2,4 @@ pyttsx3
 PyAudio
 requests
 SpeechRecognition
+ddgs
