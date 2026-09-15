@@ -39,6 +39,18 @@ datos actuales puede realizar búsquedas web sin utilizar una API de pago.
    py Scritps/Jarvis.py
    ```
 
+Al iniciarse se abre una interfaz holográfica animada. La cara cambia de color
+y estado mientras escucha, procesa una orden o responde; las barras de la boca
+se mueven durante toda la reproducción de voz. La ventana también muestra la
+última frase reconocida y la respuesta de Jarvis.
+
+Para utilizar únicamente el modo tradicional de consola:
+
+```powershell
+$env:JARVIS_GUI="false"
+py Scritps/Jarvis.py
+```
+
 ## Ejemplos de comandos de voz
 
 - `Abre la calculadora`
@@ -94,6 +106,9 @@ $env:JARVIS_WEB_SEARCH="auto"
 
 # Región preferida para los resultados
 $env:JARVIS_SEARCH_REGION="es-es"
+
+# Velocidad de la voz (150 es el valor predeterminado)
+$env:JARVIS_VOICE_RATE="150"
 ```
 
 En equipos con pocos recursos se puede utilizar `qwen3:1.7b`; ofrecerá

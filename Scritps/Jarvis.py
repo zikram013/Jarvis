@@ -21,9 +21,8 @@ URL_CLIMA = "https://api.openweathermap.org/data/2.5/weather"
 URL_PRONOSTICO = "https://api.openweathermap.org/data/2.5/forecast"
 
 # Inicializar el motor de voz
-engine = pyttsx3.init()
-engine.setProperty("rate", 150)
-engine.setProperty("voice", "spanish")
+engine = None
+interface = None
 knowledge_assistant = LocalKnowledgeAssistant()
 
 VERBOS_APERTURA = (
@@ -95,28 +94,91 @@ MESES = {
 }
 
 
+def seleccionar_voz_espanola(speech_engine):
+    """Selecciona una voz española instalada cuando existe."""
+    try:
+        voices = speech_engine.getProperty("voices") or []
+    except (KeyError, RuntimeError):
+        return
+
+    for voice in voices:
+        languages = " ".join(
+            language.decode(errors="ignore")
+            if isinstance(language, bytes)
+            else str(language)
+            for language in getattr(voice, "languages", [])
+        )
+        description = " ".join(
+            (
+                str(getattr(voice, "id", "")),
+                str(getattr(voice, "name", "")),
+                languages,
+            )
+        ).lower()
+        markers = ("spanish", "español", "es-es", "es_es")
+        if any(marker in description for marker in markers):
+            speech_engine.setProperty("voice", voice.id)
+            return
+
+
+def obtener_motor_voz():
+    """Inicializa el motor en el hilo que lo utilizará."""
+    global engine
+    if engine is None:
+        engine = pyttsx3.init()
+        engine.setProperty("rate", int(os.getenv("JARVIS_VOICE_RATE", "150")))
+        seleccionar_voz_espanola(engine)
+    return engine
+
+
+def actualizar_interfaz(state, detail=None):
+    """Envía un estado a la interfaz si está activa."""
+    if interface is not None:
+        interface.set_state(state, detail)
+
+
 def speak(text):
-    """Convierte texto en voz."""
-    engine.say(text)
-    engine.runAndWait()
+    """Convierte texto en voz y anima la boca mientras se reproduce."""
+    message = str(text).strip()
+    if not message:
+        return
+
+    if interface is not None:
+        interface.show_jarvis(message)
+    actualizar_interfaz("speaking", "Síntesis de voz activa")
+    try:
+        speech_engine = obtener_motor_voz()
+        speech_engine.say(message)
+        speech_engine.runAndWait()
+    except Exception as error:
+        print(f" Error en la síntesis de voz: {error}")
+        actualizar_interfaz("error", "Error en la síntesis de voz")
+    else:
+        actualizar_interfaz("idle", "Sistemas preparados")
 
 
 def listen():
     """Escucha la voz del usuario y la convierte en texto."""
     recognizer = sr.Recognizer()
+    actualizar_interfaz("listening", "Micrófono activo")
     with sr.Microphone() as source:
         print("Escuchando...")
         recognizer.adjust_for_ambient_noise(source)
         audio = recognizer.listen(source)
 
     try:
+        actualizar_interfaz("thinking", "Interpretando audio")
         command = recognizer.recognize_google(audio, language="es-ES")
         print(f"Dijiste: {command}")
+        if interface is not None:
+            interface.show_user(command)
         return command.lower()
     except sr.UnknownValueError:
         print("No pude entender el audio.")
+        actualizar_interfaz("idle", "No se entendió el audio")
     except sr.RequestError:
         print("Error al conectar con el servicio de reconocimiento.")
+        actualizar_interfaz("error", "Error de reconocimiento")
     return None
 
 
@@ -145,6 +207,7 @@ def solicitar_ciudad(pregunta):
 
 def obtener_clima(ciudad=None):
     """Obtiene la temperatura actual de una ciudad."""
+    actualizar_interfaz("thinking", "Consultando meteorología")
     if not comprobar_api_clima():
         return
 
@@ -185,6 +248,7 @@ def obtener_clima(ciudad=None):
 
 def obtener_pronostico(ciudad=None):
     """Obtiene el pronóstico del clima para los próximos cinco días."""
+    actualizar_interfaz("thinking", "Consultando pronóstico")
     if not comprobar_api_clima():
         return
 
@@ -336,6 +400,7 @@ def extraer_nombre_aplicacion(command):
 
 def abrir_aplicacion(nombre):
     """Localiza y abre una aplicación conocida o instalada."""
+    actualizar_interfaz("thinking", "Localizando aplicación")
     if not nombre:
         speak("¿Qué aplicación quieres abrir?")
         nombre = listen()
@@ -447,6 +512,7 @@ def es_comando_salida(command):
 def responder_pregunta(question):
     """Consulta Ollama y, cuando hace falta, resultados web gratuitos."""
     print(" Consultando el asistente local...")
+    actualizar_interfaz("thinking", "Consultando Ollama")
     try:
         answer = knowledge_assistant.ask(question)
     except OllamaUnavailable as error:
@@ -489,13 +555,39 @@ def execute_command(command):
         responder_pregunta(command)
 
 
-def main():
-    """Inicia el bucle principal del asistente."""
+def assistant_loop(face=None):
+    """Ejecuta el ciclo de escucha, tanto con interfaz como en consola."""
+    global interface
+    interface = face
     speak("Hola, soy tu asistente. ¿En qué puedo ayudarte?")
-    while True:
+    while face is None or face.is_running():
         comando = listen()
         if comando:
             execute_command(comando)
+
+
+def main():
+    """Inicia Jarvis con interfaz gráfica o en modo consola."""
+    gui_enabled = os.getenv("JARVIS_GUI", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    if not gui_enabled:
+        assistant_loop()
+        return
+
+    try:
+        from jarvis_face import JarvisFace
+
+        face = JarvisFace(assistant_loop)
+    except Exception as error:
+        print(f" No pude iniciar la interfaz gráfica: {error}")
+        print(" Jarvis continuará en modo consola.")
+        assistant_loop()
+        return
+
+    face.run()
 
 
 if __name__ == "__main__":

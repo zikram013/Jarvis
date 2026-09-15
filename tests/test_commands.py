@@ -3,7 +3,8 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from types import SimpleNamespace
+from unittest.mock import Mock, call, patch
 
 
 def cargar_jarvis():
@@ -42,6 +43,57 @@ jarvis = cargar_jarvis()
 
 
 class ExecuteCommandTest(unittest.TestCase):
+    def test_selecciona_una_voz_espanola_instalada(self):
+        english = SimpleNamespace(
+            id="voice-en",
+            name="English Voice",
+            languages=[b"en-US"],
+        )
+        spanish = SimpleNamespace(
+            id="voice-es",
+            name="Microsoft Helena Spanish",
+            languages=[b"es-ES"],
+        )
+        speech_engine = Mock()
+        speech_engine.getProperty.return_value = [english, spanish]
+
+        jarvis.seleccionar_voz_espanola(speech_engine)
+
+        speech_engine.setProperty.assert_called_once_with("voice", "voice-es")
+
+    def test_speak_anima_la_interfaz_mientras_reproduce_la_voz(self):
+        speech_engine = Mock()
+        face = Mock()
+        with patch.object(jarvis, "engine", speech_engine):
+            with patch.object(jarvis, "interface", face):
+                jarvis.speak("Hola, soy Jarvis")
+
+        speech_engine.say.assert_called_once_with("Hola, soy Jarvis")
+        speech_engine.runAndWait.assert_called_once_with()
+        face.show_jarvis.assert_called_once_with("Hola, soy Jarvis")
+        self.assertEqual(
+            face.set_state.call_args_list,
+            [
+                call("speaking", "Síntesis de voz activa"),
+                call("idle", "Sistemas preparados"),
+            ],
+        )
+
+    def test_lee_en_voz_alta_la_respuesta_de_ollama(self):
+        answer = SimpleNamespace(
+            text="El próximo partido es el domingo [1].",
+            sources=(),
+        )
+        with patch.object(
+            jarvis.knowledge_assistant,
+            "ask",
+            return_value=answer,
+        ):
+            with patch.object(jarvis, "speak") as speak:
+                jarvis.responder_pregunta("¿Cuál es el próximo partido?")
+
+        speak.assert_called_once_with("El próximo partido es el domingo.")
+
     def test_abre_una_aplicacion(self):
         with patch.object(jarvis, "abrir_aplicacion") as abrir:
             jarvis.execute_command("abre calculadora")
